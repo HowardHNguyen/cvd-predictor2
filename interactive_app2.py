@@ -127,8 +127,13 @@ def analyze_note_keywords(note: str):
     return risk_hits, protect_hits
 
 
+def get_percentile(prob: float, dist: np.ndarray) -> float:
+    """Return percentile (0–1) of prob within distribution dist."""
+    return float((dist <= prob).mean())
+
+
 # ============================================================
-# Caching: dataset, models, risk distributions
+# Caching: dataset + model load (safe, hashable)
 # ============================================================
 @st.cache_data(show_spinner=False)
 def load_dataset(path: str):
@@ -142,29 +147,6 @@ def load_model(path: str):
     if not os.path.exists(path):
         raise FileNotFoundError(f"Model file {path} not found.")
     return joblib.load(path)
-
-
-def _precompute_risk_distributions(df_full, model_map):
-    """
-    Internal helper used by cache: compute predicted risk for all rows
-    (no cvd label) for each model for percentile context.
-    """
-    X_all = df_full.drop(columns=["cvd"])
-    dists = {}
-    for name, m in model_map.items():
-        probs = m.predict_proba(X_all)[:, 1]
-        dists[name] = probs
-    return dists
-
-
-@st.cache_resource(show_spinner=False)
-def precompute_risk_distributions(df_full, model_map):
-    return _precompute_risk_distributions(df_full, model_map)
-
-
-def get_percentile(prob: float, dist: np.ndarray) -> float:
-    """Return percentile (0–1) of prob within distribution dist."""
-    return float((dist <= prob).mean())
 
 
 # ============================================================
@@ -185,8 +167,24 @@ MODEL_MAP = {
     "Stacking": STACK_MODEL,
 }
 
-# Precompute risk distributions for percentile context
-RISK_DISTS = precompute_risk_distributions(df, MODEL_MAP)
+
+def precompute_risk_distributions(df_full: pd.DataFrame):
+    """
+    Compute predicted risk for all rows (no cvd label) for each model,
+    for use in percentile context. No caching decorator here because
+    it depends on model objects, which are not hashable.
+    """
+    X_all = df_full.drop(columns=["cvd"])
+    dists = {}
+    dists["Logistic Regression"] = LR_MODEL.predict_proba(X_all)[:, 1]
+    dists["XGBoost"] = XGB_MODEL.predict_proba(X_all)[:, 1]
+    dists["Gradient Boosting"] = GBM_MODEL.predict_proba(X_all)[:, 1]
+    dists["Stacking"] = STACK_MODEL.predict_proba(X_all)[:, 1]
+    return dists
+
+
+# Precompute once on import
+RISK_DISTS = precompute_risk_distributions(df)
 
 # ============================================================
 # Sidebar: dataset + model + patient profile
