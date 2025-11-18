@@ -20,6 +20,17 @@ MODEL_SUMMARY = {
     "Stacking":            {"AUC": 0.920, "Brier": 0.089},
 }
 
+# Anchor clinical notes for comparison
+POSITIVE_NOTE = (
+    "active lifestyle, healthy diet, exercises regularly, no symptoms, "
+    "never smoked, good sleep, no cardiac complaints"
+)
+
+NEGATIVE_NOTE = (
+    "chest pain, palpitations, shortness of breath, dizziness on exertion, "
+    "fatigue, noncompliant with medications, poor diet, high stress"
+)
+
 # ============================================================
 # Helper functions
 # ============================================================
@@ -249,12 +260,6 @@ with st.spinner("Computing risk and local uncertainty..."):
     dist = RISK_DISTS[model_name]
     percentile = get_percentile(prob, dist)
 
-    # Text-only impact: compare with neutral note
-    neutral_row = row.copy()
-    neutral_row.loc[:, "note"] = "no symptoms reported"
-    prob_neutral = float(model.predict_proba(neutral_row)[:, 1])
-    delta_text = prob - prob_neutral
-
 risk_label, risk_color = get_risk_category(prob)
 
 # ============================================================
@@ -373,23 +378,41 @@ with right:
     # --------------------------------------------------------
     st.markdown("### Clinical Note Impact")
 
-    if abs(delta_text) < 0.001:
-        st.markdown(
-            "The clinical note has **minimal impact** on this prediction "
-            "(risk with a neutral note is very similar)."
-        )
-    elif delta_text > 0:
-        st.markdown(
-            f"- **Risk with your note:** {format_percent(prob)}  \n"
-            f"- **Risk with neutral note (‘no symptoms reported’):** {format_percent(prob_neutral)}  \n"
-            f"- **Text adds:** +{delta_text*100:.1f} percentage points of risk."
-        )
-    else:
-        st.markdown(
-            f"- **Risk with your note:** {format_percent(prob)}  \n"
-            f"- **Risk with neutral note:** {format_percent(prob_neutral)}  \n"
-            f"- **Text reduces risk by:** {abs(delta_text)*100:.1f} percentage points."
-        )
+    # Your note
+    prob_your = prob
+
+    # Positive anchor note
+    row_pos = row.copy()
+    row_pos.loc[:, "note"] = POSITIVE_NOTE
+    prob_pos = float(model.predict_proba(row_pos)[:, 1])
+
+    # Neutral note
+    row_neu = row.copy()
+    row_neu.loc[:, "note"] = "no symptoms reported"
+    prob_neu = float(model.predict_proba(row_neu)[:, 1])
+
+    # High-risk anchor note
+    row_neg = row.copy()
+    row_neg.loc[:, "note"] = NEGATIVE_NOTE
+    prob_neg = float(model.predict_proba(row_neg)[:, 1])
+
+    df_notes = pd.DataFrame(
+        [
+            ["Your note", format_percent(prob_your), "—"],
+            ["Positive note", format_percent(prob_pos), f"{(prob_your - prob_pos)*100:+.1f}"],
+            ["Neutral note", format_percent(prob_neu), f"{(prob_your - prob_neu)*100:+.1f}"],
+            ["High-risk note", format_percent(prob_neg), f"{(prob_your - prob_neg)*100:+.1f}"],
+        ],
+        columns=["Scenario", "Risk", "Δ vs your note (points)"],
+    )
+
+    st.dataframe(df_notes, use_container_width=True, hide_index=True)
+    st.caption(
+        "The table compares your clinical note to a strongly positive text anchor, "
+        "a neutral 'no symptoms' note, and a high-risk symptom note. "
+        "Negative Δ means that scenario would have **lower** risk than your current note; "
+        "positive Δ means it would be **higher**."
+    )
 
     risk_hits, protect_hits = analyze_note_keywords(note)
     cols_kw = st.columns(2)
