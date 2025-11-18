@@ -291,8 +291,8 @@ with st.expander("About This App"):
 
         **Why a second app (v2)?**
 
-        - Your first app (`cvd-predictor.streamlit.app`) is based on a smaller, more constrained dataset.  
-        - This v2 app (`cvd-predictor2`) lets you **compare behavior** when models are trained on a
+        - The first app (`cvd-predictor.streamlit.app`) is based on a smaller, more constrained dataset.  
+        - This v2 app (`cvd-predictor2`) lets us **compare behavior** when models are trained on a
           larger, GAN-balanced synthetic EHR that better reflects real-world heterogeneity.
         """
     )
